@@ -6,13 +6,13 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class EmpresaService {
 
     private final EmpresaRepository empresaRepository;
 
-    // Constructor manual
     public EmpresaService(EmpresaRepository empresaRepository) {
         this.empresaRepository = empresaRepository;
     }
@@ -22,13 +22,19 @@ public class EmpresaService {
         return empresaRepository.findAll();
     }
 
+    // ─── Buscar por RUC ───────────────────────────────────────────────────────
+    public Optional<Empresa> buscarPorRuc(String ruc) {
+        return empresaRepository.findByRuc(ruc);
+    }
+
     // ─── Guardar nueva empresa ────────────────────────────────────────────────
     public Empresa guardarEmpresa(Empresa empresa) {
-        // Si no tiene fecha de registro, se asigna la fecha actual
+        if (empresaRepository.existsByRuc(empresa.getRuc())) {
+            throw new RuntimeException("RUC_DUPLICADO");
+        }
         if (empresa.getFechaRegistro() == null) {
             empresa.setFechaRegistro(LocalDateTime.now());
         }
-        // Estado por defecto si viene vacío
         if (empresa.getEstado() == null || empresa.getEstado().isBlank()) {
             empresa.setEstado("activo");
         }
