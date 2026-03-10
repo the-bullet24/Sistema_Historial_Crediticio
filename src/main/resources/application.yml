@@ -3,9 +3,9 @@ server:
 
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/riesgo_crediticio?currentSchema=core
-    username: score_user
-    password: 123456
+    url: jdbc:postgresql://aws-1-us-east-2.pooler.supabase.com:5432/postgres?currentSchema=core
+    username: postgres.eqsaxdoalxvvltdumptt
+    password: SistemaScore123
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -16,7 +16,7 @@ spring:
       hibernate:
         format_sql: true
         default_schema: core
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
+        database-platform: org.hibernate.dialect.PostgreSQLDialect
 
   jackson:
     serialization:
