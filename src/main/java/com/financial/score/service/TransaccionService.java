@@ -28,7 +28,7 @@ public class TransaccionService {
         this.detalleRepository   = detalleRepository;
     }
 
-    public List<Transaccion> listar() {
+    public List <Transaccion> listar() {
         return repository.findAll();
     }
 
@@ -60,6 +60,16 @@ public class TransaccionService {
         if (transaccion.getEstadoPago() == null || transaccion.getEstadoPago().isBlank()) {
             transaccion.setEstadoPago("pendiente");
         }
+
+        // ── AGREGAR ESTO ──────────────────────────────────────────────────────
+        if (transaccion.getCodigoTransaccion() == null || transaccion.getCodigoTransaccion().isBlank()) {
+            String codigo = String.format("TRX-%s-%04d-%d",
+                    LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyMMdd")),
+                    transaccion.getEmpresa().getId(),
+                    System.currentTimeMillis() % 10000);
+            transaccion.setCodigoTransaccion(codigo);
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         // 3. Guardar la transacción primero (necesitamos el ID generado)
         Transaccion savedTransaccion = repository.save(transaccion);
