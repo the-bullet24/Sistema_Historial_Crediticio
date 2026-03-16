@@ -8,8 +8,8 @@ import com.financial.score.repository.AjusteTransaccionRepository;
 import com.financial.score.repository.EventoTransaccionRepository;
 import com.financial.score.repository.PagoRepository;
 import com.financial.score.repository.TransaccionRepository;
-import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional; // ← SPRING, no jakarta
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -21,8 +21,8 @@ public class AjusteService {
 
     private final AjusteTransaccionRepository ajusteRepository;
     private final EventoTransaccionRepository eventoRepository;
-    private final TransaccionRepository transaccionRepository;
-    private final PagoRepository pagoRepository;
+    private final TransaccionRepository       transaccionRepository;
+    private final PagoRepository              pagoRepository;
 
     public AjusteService(AjusteTransaccionRepository ajusteRepository,
                          EventoTransaccionRepository eventoRepository,
@@ -44,7 +44,7 @@ public class AjusteService {
         return ajusteRepository.findByTransaccionIdOrderByFechaAjusteDesc(transaccionId);
     }
 
-    // ─── Solicitar ajuste (queda en "pendiente") ─────────────────────────────
+    // ─── Solicitar ajuste ────────────────────────────────────────────────────
     @Transactional
     public AjusteTransaccion solicitarAjuste(Long transaccionId, String tipo,
                                              BigDecimal valor, String motivo) {
@@ -52,9 +52,14 @@ public class AjusteService {
                 .orElseThrow(() -> new RuntimeException(
                         "Transacción no encontrada: " + transaccionId));
 
-        BigDecimal totalPagado    = pagoRepository.sumMontoByTransaccionId(transaccionId);
-        BigDecimal totalAjustes   = ajusteRepository.sumAjustesAprobadosByTransaccionId(transaccionId);
-        BigDecimal saldoPendiente = trx.getMontoTotal().subtract(totalPagado).subtract(totalAjustes);
+        BigDecimal totalPagado  = pagoRepository.sumMontoByTransaccionId(transaccionId);
+        BigDecimal totalAjustes = ajusteRepository.sumAjustesAprobadosByTransaccionId(transaccionId);
+        if (totalPagado  == null) totalPagado  = BigDecimal.ZERO;
+        if (totalAjustes == null) totalAjustes = BigDecimal.ZERO;
+
+        BigDecimal saldoPendiente = trx.getMontoTotal()
+                .subtract(totalPagado)
+                .subtract(totalAjustes);
 
         BigDecimal montoCalculado;
         if ("descuento_porcentaje".equals(tipo)) {
@@ -67,8 +72,8 @@ public class AjusteService {
 
         if (montoCalculado.compareTo(saldoPendiente) > 0) {
             throw new RuntimeException(
-                    "El ajuste (S/ " + montoCalculado +
-                            ") supera el saldo pendiente (S/ " + saldoPendiente + ")");
+                    "El ajuste (S/ " + montoCalculado
+                            + ") supera el saldo pendiente (S/ " + saldoPendiente + ")");
         }
 
         AjusteTransaccion ajuste = new AjusteTransaccion();
@@ -83,7 +88,8 @@ public class AjusteService {
         AjusteTransaccion saved = ajusteRepository.save(ajuste);
 
         registrarEvento(trx, "AJUSTE_APLICADO",
-                "Ajuste solicitado: " + tipo + " — S/ " + montoCalculado + ". Motivo: " + motivo,
+                "Ajuste solicitado: " + tipo + " — S/ " + montoCalculado
+                        + ". Motivo: " + motivo,
                 montoCalculado);
 
         return saved;
@@ -138,18 +144,24 @@ public class AjusteService {
         return saved;
     }
 
-    // ─── Helper: recalcular estado transacción ───────────────────────────────
+    // ─── Helper: recalcular estado transacción ────────────────────────────────
     private void recalcularEstadoTransaccion(Long transaccionId) {
         Transaccion trx = transaccionRepository.findById(transaccionId).orElseThrow();
+
         BigDecimal totalPagado  = pagoRepository.sumMontoByTransaccionId(transaccionId);
         BigDecimal totalAjustes = ajusteRepository.sumAjustesAprobadosByTransaccionId(transaccionId);
-        BigDecimal saldo        = trx.getMontoTotal().subtract(totalPagado).subtract(totalAjustes);
+        if (totalPagado  == null) totalPagado  = BigDecimal.ZERO;
+        if (totalAjustes == null) totalAjustes = BigDecimal.ZERO;
+
+        BigDecimal saldo = trx.getMontoTotal()
+                .subtract(totalPagado)
+                .subtract(totalAjustes);
 
         if (saldo.compareTo(BigDecimal.ZERO) <= 0) {
             trx.setEstadoPago("pagado");
             registrarEvento(trx, "CIERRE",
-                    "Transacción liquidada. Pagado: S/ " + totalPagado +
-                            " | Ajustes: S/ " + totalAjustes,
+                    "Transacción liquidada. Pagado: S/ " + totalPagado
+                            + " | Ajustes: S/ " + totalAjustes,
                     trx.getMontoTotal());
         } else if (totalPagado.compareTo(BigDecimal.ZERO) > 0) {
             trx.setEstadoPago("parcial");
@@ -157,7 +169,7 @@ public class AjusteService {
         transaccionRepository.save(trx);
     }
 
-    // ─── Helper: registrar evento en timeline ────────────────────────────────
+    // ─── Helper: registrar evento en timeline ─────────────────────────────────
     public void registrarEvento(Transaccion trx, String tipo,
                                 String descripcion, BigDecimal monto) {
         EventoTransaccion ev = new EventoTransaccion();

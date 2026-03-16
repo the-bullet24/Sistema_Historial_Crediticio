@@ -5,8 +5,8 @@ import com.financial.score.model.Transaccion;
 import com.financial.score.repository.AjusteTransaccionRepository;
 import com.financial.score.repository.PagoRepository;
 import com.financial.score.repository.TransaccionRepository;
-import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional; // ← SPRING, no jakarta
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -14,10 +14,10 @@ import java.time.LocalDateTime;
 @Service
 public class PagoService {
 
-    private final PagoRepository pagoRepository;
-    private final TransaccionRepository transaccionRepository;
+    private final PagoRepository              pagoRepository;
+    private final TransaccionRepository       transaccionRepository;
     private final AjusteTransaccionRepository ajusteRepository;
-    private final AjusteService ajusteService;
+    private final AjusteService               ajusteService;
 
     public PagoService(PagoRepository pagoRepository,
                        TransaccionRepository transaccionRepository,
@@ -29,21 +29,33 @@ public class PagoService {
         this.ajusteService         = ajusteService;
     }
 
-    @Transactional
+    @Transactional // ← org.springframework.transaction.annotation.Transactional
     public Pago registrar(Pago pago) {
+
+        // 1. Cargar la transacción
         Transaccion trx = transaccionRepository.findById(pago.getTransaccion().getId())
                 .orElseThrow(() -> new RuntimeException(
                         "Transacción no encontrada: ID " + pago.getTransaccion().getId()));
 
+        // 2. Guardar el pago
         pago.setFechaRegistro(LocalDateTime.now());
         Pago savedPago = pagoRepository.save(pago);
 
-        // Calcular saldo real (pagos + ajustes aprobados)
+        // 3. Flush explícito para que el SUM vea el pago recién insertado
+        //    Sin esto, la query JPQL puede devolver el valor anterior
+        pagoRepository.flush();
+
+        // 4. Recalcular saldo con null-safe
         BigDecimal totalPagado  = pagoRepository.sumMontoByTransaccionId(trx.getId());
         BigDecimal totalAjustes = ajusteRepository.sumAjustesAprobadosByTransaccionId(trx.getId());
-        BigDecimal saldo        = trx.getMontoTotal().subtract(totalPagado).subtract(totalAjustes);
+        if (totalPagado  == null) totalPagado  = BigDecimal.ZERO;
+        if (totalAjustes == null) totalAjustes = BigDecimal.ZERO;
 
-        // Determinar estado y tipo de evento
+        BigDecimal saldo = trx.getMontoTotal()
+                .subtract(totalPagado)
+                .subtract(totalAjustes);
+
+        // 5. Determinar nuevo estado
         String nuevoEstado;
         String tipoEvento;
         String descripcion;
@@ -51,26 +63,29 @@ public class PagoService {
         if (saldo.compareTo(BigDecimal.ZERO) <= 0) {
             nuevoEstado = "pagado";
             tipoEvento  = "PAGO_TOTAL";
-            descripcion = "Pago total registrado — S/ " + pago.getMonto() +
-                    ". Transacción liquidada.";
+            descripcion = "Pago total registrado — S/ " + pago.getMonto()
+                    + ". Transacción liquidada.";
         } else {
             nuevoEstado = "parcial";
             tipoEvento  = "PAGO_PARCIAL";
-            descripcion = "Pago parcial registrado — S/ " + pago.getMonto() +
-                    ". Saldo pendiente: S/ " + saldo;
+            descripcion = "Pago parcial registrado — S/ " + pago.getMonto()
+                    + ". Saldo pendiente: S/ " + saldo;
         }
 
+        // 6. Actualizar estado en transacción y guardar
         trx.setEstadoPago(nuevoEstado);
         transaccionRepository.save(trx);
+        transaccionRepository.flush(); // ← asegura que el UPDATE se ejecuta
 
-        // Registrar en timeline
+        // 7. Registrar en timeline
         ajusteService.registrarEvento(trx, tipoEvento, descripcion, pago.getMonto());
 
-        // Si se liquidó → registrar cierre
+        // 8. Si se liquidó → registrar evento de cierre
         if ("pagado".equals(nuevoEstado)) {
-            ajusteService.registrarEvento(trx, "CIERRE",
-                    "Transacción cerrada. Total pagado: S/ " + totalPagado +
-                            " | Ajustes aplicados: S/ " + totalAjustes,
+            ajusteService.registrarEvento(
+                    trx, "CIERRE",
+                    "Transacción cerrada. Total pagado: S/ " + totalPagado
+                            + " | Ajustes aplicados: S/ " + totalAjustes,
                     trx.getMontoTotal());
         }
 

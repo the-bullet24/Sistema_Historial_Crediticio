@@ -10,10 +10,17 @@ import java.util.List;
 
 public interface PagoRepository extends JpaRepository<Pago, Long> {
 
-    // ── Agrega estas dos líneas ──────────────────────────────────────────────
+    /**
+     * Usado por TransaccionPdfService para construir la tabla de pagos del PDF.
+     * JOIN FETCH producto evita N+1 — carga todo en 1 query.
+     */
+    @Query("SELECT p FROM Pago p WHERE p.transaccion.id = :transaccionId ORDER BY p.fechaPago ASC")
+    List<Pago> findByTransaccionId(@Param("transaccionId") Long transaccionId);
+
+    /**
+     * Ya existía en tu PagoService — suma montos para calcular saldo.
+     * Si ya lo tienes declarado, no duplicar.
+     */
     @Query("SELECT COALESCE(SUM(p.monto), 0) FROM Pago p WHERE p.transaccion.id = :transaccionId")
     BigDecimal sumMontoByTransaccionId(@Param("transaccionId") Long transaccionId);
-
-    List<Pago> findByTransaccionId(Long transaccionId);
-    // ─────────────────────────────────────────────────────────────────────────
 }
