@@ -14,8 +14,10 @@ public class Usuario {
 
     private String nombre;
     private String email;
+    @Column(name = "password_hash")
     private String passwordHash;
     private String rol;
+    @Column(name = "fecha_creacion")
     private LocalDateTime fechaCreacion;
     private String estado;
 

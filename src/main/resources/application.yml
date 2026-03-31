@@ -25,3 +25,12 @@ spring:
 logging:
   level:
     org.hibernate.SQL: DEBUG
+
+# ── JWT ────────────────────────────────────────────────────────────────────────
+# DESARROLLO: clave hardcodeada para facilitar las pruebas locales.
+# PRODUCCIÓN: reemplazar por variable de entorno ${JWT_SECRET}
+#             y generar clave con: openssl rand -base64 32
+app:
+  jwt:
+    secret: U2NvcmVDcmVkaXRTZWNyZXRLZXkyMDI2U2VjcmV0S2V5MjAyNg==
+    expiration: 86400000

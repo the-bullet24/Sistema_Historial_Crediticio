@@ -13,7 +13,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/ajustes")
-@CrossOrigin(origins = "*")
 public class AjusteController {
 
     private final AjusteService service;

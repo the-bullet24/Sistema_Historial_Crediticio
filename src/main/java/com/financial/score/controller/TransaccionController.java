@@ -2,6 +2,7 @@ package com.financial.score.controller;
 
 import com.financial.score.model.Transaccion;
 import com.financial.score.model.TransaccionDetalle;
+import com.financial.score.model.TransaccionResumenDTO;
 import com.financial.score.service.TransaccionService;
 import com.financial.score.service.TransaccionPdfService;
 import org.springframework.http.HttpHeaders;
@@ -15,7 +16,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/transacciones")
-@CrossOrigin(origins = "*")
 public class TransaccionController {
 
     private final TransaccionService    service;
@@ -28,9 +28,11 @@ public class TransaccionController {
     }
 
     // ─── GET /api/transacciones ───────────────────────────────────────────────
+    // Devuelve DTO plano: empresa aplanada + montoPagado calculado
+    // El frontend (TransaccionesListPanel) consume exactamente estos campos
     @GetMapping
-    public List<Transaccion> listar() {
-        return service.listar();
+    public List<TransaccionResumenDTO> listar() {
+        return service.listarResumen();   // ← método nuevo en el service
     }
 
     // ─── POST /api/transacciones/registrar ────────────────────────────────────
@@ -46,12 +48,10 @@ public class TransaccionController {
     }
 
     // ─── GET /api/transacciones/{id}/pdf ─────────────────────────────────────
-    // Orden de pago — disponible siempre.
-    // Si está pendiente muestra saldo; si está pagado muestra tabla de pagos.
     @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> getOrdenPago(@PathVariable Long id) {
         try {
-            byte[] pdf = pdfService.generarOrdenPago(id);  // ← nombre correcto
+            byte[] pdf = pdfService.generarOrdenPago(id);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             "inline; filename=\"orden-" + id + ".pdf\"")
@@ -67,11 +67,10 @@ public class TransaccionController {
     }
 
     // ─── GET /api/transacciones/{id}/pdf/cierre ───────────────────────────────
-    // Comprobante de cierre — solo cuando estadoPago = "pagado".
     @GetMapping(value = "/{id}/pdf/cierre", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> getComprobanteCierre(@PathVariable Long id) {
         try {
-            byte[] pdf = pdfService.generarComprobanteCierre(id);  // ← nombre correcto
+            byte[] pdf = pdfService.generarComprobanteCierre(id);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             "inline; filename=\"cierre-" + id + ".pdf\"")
@@ -80,9 +79,7 @@ public class TransaccionController {
                     .contentLength(pdf.length)
                     .body(pdf);
         } catch (IllegalStateException ex) {
-            // Transacción aún no pagada
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .build();
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.notFound().build();
         } catch (Exception ex) {

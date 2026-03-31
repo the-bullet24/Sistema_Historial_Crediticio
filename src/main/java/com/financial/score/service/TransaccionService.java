@@ -3,6 +3,8 @@ package com.financial.score.service;
 import com.financial.score.model.Producto;
 import com.financial.score.model.Transaccion;
 import com.financial.score.model.TransaccionDetalle;
+import com.financial.score.model.TransaccionResumenDTO;
+import com.financial.score.repository.PagoRepository;
 import com.financial.score.repository.ProductoRepository;
 import com.financial.score.repository.TransaccionDetalleRepository;
 import com.financial.score.repository.TransaccionRepository;
@@ -16,20 +18,49 @@ import java.util.List;
 @Service
 public class TransaccionService {
 
-    private final TransaccionRepository repository;
-    private final ProductoRepository productoRepository;
+    private final TransaccionRepository        repository;
+    private final ProductoRepository           productoRepository;
     private final TransaccionDetalleRepository detalleRepository;
+    private final PagoRepository               pagoRepository;
 
     public TransaccionService(TransaccionRepository repository,
                               ProductoRepository productoRepository,
-                              TransaccionDetalleRepository detalleRepository) {
+                              TransaccionDetalleRepository detalleRepository,
+                              PagoRepository pagoRepository) {
         this.repository          = repository;
         this.productoRepository  = productoRepository;
         this.detalleRepository   = detalleRepository;
+        this.pagoRepository      = pagoRepository;
     }
 
-    public List <Transaccion> listar() {
+    public List<Transaccion> listar() {
         return repository.findAll();
+    }
+
+    /**
+     * Lista todas las transacciones como DTO plano.
+     * Resuelve el problema de relaciones LAZY al acceder dentro
+     * de una sesión @Transactional y mapear manualmente a DTO.
+     * El frontend recibe: id, codigo, empresa (nombre+ruc),
+     * montoTotal, montoPagado (suma real de pagos), fechas, estadoPago.
+     */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<TransaccionResumenDTO> listarResumen() {
+        return repository.findAll().stream()
+                .map(t -> new TransaccionResumenDTO(
+                        t.getId(),
+                        t.getCodigoTransaccion(),
+                        t.getMontoTotal(),
+                        // Suma real de pagos desde la tabla core.pagos
+                        pagoRepository.sumMontoByTransaccionId(t.getId()),
+                        t.getFechaVenta(),
+                        t.getFechaVencimiento(),
+                        t.getEstadoPago(),
+                        t.getEmpresa() != null ? t.getEmpresa().getId()          : null,
+                        t.getEmpresa() != null ? t.getEmpresa().getRazonSocial() : "—",
+                        t.getEmpresa() != null ? t.getEmpresa().getRuc()         : "—"
+                ))
+                .toList();
     }
 
     // ─── Registrar transacción completa + descontar stock ────────────────────
